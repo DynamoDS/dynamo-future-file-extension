@@ -44,7 +44,7 @@ namespace Dynamo.FutureFileExtension
             //if dynamo is newer than 2.11, don't monkey patch anything.
             if (sp.StartupParams.DynamoVersion > new Version(2, 12, 0))
             {
-                MessageLogged(LogMessage.Info($"This extension only patches dynamo versions older than 2.12, current version is {Assembly.GetCallingAssembly().GetName().Version}, returning."));
+                MessageLogged(LogMessage.Info($"This extension only patches dynamo versions older than 2.12, current version is {sp.StartupParams.DynamoVersion}, returning."));
                 return;
             }
 
@@ -53,7 +53,7 @@ namespace Dynamo.FutureFileExtension
 
         public void DoPatching()
         {
-            var harmony = new Harmony("Dynamo.FurureFileExtension.Patch.1");
+            var harmony = new Harmony("Dynamo.FutureFileExtension.Patch.1");
 
             var originalOpenFileFromPath = AccessTools.Method(typeof(DynamoModel), nameof(DynamoModel.OpenFileFromPath));
             var prefix = typeof(FutureFileExtension).GetMethod(nameof(Prefix), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
@@ -98,9 +98,9 @@ namespace Dynamo.FutureFileExtension
                         var root = JObject.Parse(fileContents);
                         //find all inputs that don't exist in the known types - these are the ones we can't deserialize correctly.
                         //TODO reason about case sensitivity.
-                        var matchingTokens = root.SelectTokens("Inputs[*].Type").Where(x => !knownInputTypeNames.Contains(x.Value<string>()));
+                        var unknownInputTypes = root.SelectTokens("Inputs[*].Type").Where(x => !knownInputTypeNames.Contains(x.Value<string>()));
                         //for now we just replace with "Selection" - but we could avoid deserializing this entire input.
-                        matchingTokens.ToList().ForEach(x => x.Replace(JToken.FromObject("Selection")));
+                        unknownInputTypes.ToList().ForEach(x => x.Replace(JToken.FromObject("Selection")));
                         fileContents = root.ToString();
 
                         openJsonFileMethod.Invoke(__instance, new object[] { fileContents, filePath, forceManualExecutionMode });
@@ -108,10 +108,14 @@ namespace Dynamo.FutureFileExtension
                     }
                     else
                     {
+                        //some unhandled json deserialization issue
+                        __instance?.Logger?.Log($"exception while trying to open file: {ex}");
                         throw ex;
                     }
                 }
             }
+            //if we have made it this far exception was an unexpected type.
+            __instance?.Logger?.Log($"unknown exception while trying to open file: {ex}");
             return false;
         }
 
